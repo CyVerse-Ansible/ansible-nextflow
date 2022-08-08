@@ -1,0 +1,26 @@
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv0001
+  labels:
+    type: local
+spec:
+  storageClassName: manual
+  capacity:
+    storage: {{ PV_SPACE }}
+  accessModes:
+    - ReadWriteMany
+  hostPath:
+    path: "/root/work"
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: pvc0001
+spec:
+  storageClassName: manual
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: {{ PV_SPACE }}

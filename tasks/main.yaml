@@ -1,0 +1,112 @@
+---
+- name: Gather OS-specific variables
+  include_vars: "{{ item }}"
+  with_first_found:
+    - "{{ ansible_distribution }}-{{ ansible_distribution_major_version }}.yaml"
+    - "{{ ansible_distribution }}.yaml"
+    - "{{ ansible_os_family }}.yaml"
+
+- name: SHELL; test kubernetes
+  shell: "kubectl version"
+  register: kubernetes_check
+  ignore_errors: true
+
+- name: fail if kubernetes is not found
+  fail:
+    msg: "?Could not find kubernetes"
+  when: kubernetes_check is failed
+
+- name: FILE; create .kube dir for root
+  file:
+    path: /root/.kube
+    mode: 0700
+    state: directory
+
+- name: FILE; link /etc/rancher/k3s/k3s.yaml for root
+  file:
+    src: "/etc/rancher/k3s/k3s.yaml"
+    dest: "/root/.kube/config"
+    state: link
+
+- name: PACKAGE; install java
+  package:
+    name: '{{ java_pkg }}'
+    state: 'present'
+
+- name: SHELL; install nextflow
+  shell: curl -s https://get.nextflow.io | bash
+
+- name: FILE; link nextflow
+  file:
+    src: "/root/nextflow"
+    dest: "/usr/local/bin/nextflow"
+    state: link
+
+- name: TEMPLATE; create the nextflow config
+  template:
+    src: "nextflow_config.j2"
+    dest: ".nextflow/config"
+    mode: 0644
+
+- name: TEMPLATE; template the pv and pvc file
+  template:
+    src: "pv.yaml.j2"
+    dest: "pv.yaml"
+    mode: 0644
+
+- name: SHELL; create the pv and pvc
+  shell: "kubectl apply -f pv.yaml"
+
+- name: SHELL; create serviceaccount nextflow-sa for k3s
+  shell: "kubectl create serviceaccount nextflow-sa"
+  ignore_errors: true
+
+- name: SHELL; create clusterrolebinding nextflow-crb for k3s
+  shell: "kubectl create clusterrolebinding nextflow-crb --clusterrole=cluster-admin --serviceaccount=default:nextflow-sa"
+  ignore_errors: true
+
+# - name: SHELL; get token name of the new service account
+#   shell: "kubectl get serviceaccount/nextflow-sa -o jsonpath='{.secrets[0].name}'"
+#   register: TOKENNAME
+#
+# # tokens are only auto assigned when installing without docker
+# - name: DEBUG; debug variable
+#   debug:
+#     msg: "{{ TOKENNAME }}"
+
+- name: SHELL; make a new token for the new service account
+  shell: "kubectl create token nextflow-sa"
+  register: TOKEN
+
+- name: DEBUG; debug variable
+  debug:
+    msg: "{{ TOKEN }}"
+
+- name: SHELL; set credentials of nextflow-sa to the token
+  shell: "kubectl config set-credentials nextflow-sa --token={{ TOKEN.stdout }}"
+
+- name: SHELL; set context to nextflow-sa
+  shell: "kubectl config set-context --current --user=nextflow-sa"
+
+- block:
+  - name: PACKAGE; install docker if not present
+    package:
+      name:
+        - docker.io
+        - docker
+      state: 'latest'
+    ignore_errors: yes
+
+  - name: SHELL; get dolphinnext install file
+    shell: git clone https://github.com/UMMS-Biocore/dolphinnext-studio.git
+
+  - name: LINEINFILE; add needed libraries to the dockerfile
+    lineinfile:
+      path: dolphinnext-studio/Dockerfile
+      insertbefore: 'RUN rm -rf /usr/lib/opencpu/library/*'
+      line: 'RUN apt install -y libharfbuzz-dev libfribidi-dev libssl-dev libtiff5-dev'
+
+  - name: SHELL; build dolphinnext in a docker container
+    shell: "docker build -t dolphinnext-studio ./dolphinnext-studio"
+
+  when: INSTALL_DOLPHINNEXT is defined and INSTALL_DOLPHINNEXT|bool

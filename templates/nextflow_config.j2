@@ -1,0 +1,8 @@
+process {
+   executor = 'k8s'
+}
+
+k8s {
+   storageClaimName = 'pvc0001'
+   storageMountPath = '/root/work'
+}
