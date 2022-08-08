@@ -1,5 +1,5 @@
 galaxy_info:
-  author: Edwin Skidmore
+  author: Ryan Schneider
   description: This role will install nextflow on a system using the k8s executor on an existing k3s cluster. It will optionaly also install Dolphinnext in a docker container.
   company: CyVerse, the University fo Arizona
 
