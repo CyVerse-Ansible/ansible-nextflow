@@ -1,4 +1,4 @@
-CyVerse Ansible k3s
+CyVerse Ansible Nextflow
 ===================
 
 This role will install nextflow and if desired Dolphinnext in a container.
